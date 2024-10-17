@@ -3,6 +3,7 @@ import './EntradaAlmacen.scss';
 import * as signalR from '@microsoft/signalr';
 import { Subject } from 'rxjs';
 import Swal from 'sweetalert2';
+import { Card, CardContent, Typography, Grid, Box, Paper, Container } from '@mui/material';
 
 // Definimos los tipos para Producto
 interface Producto {
@@ -40,21 +41,17 @@ const fetchData = async (epc: string): Promise<Producto | null> => {
 };
 
 // Cargar datos
-// Cargar datos
-// Cargar datos
 const loadData = async (epc: string, setProductos: React.Dispatch<React.SetStateAction<Producto[]>>) => {
     try {
         const data = await fetchData(epc);
         if (!data) {
             console.warn(`No se encontraron datos para el EPC: ${epc}`);
-            return; // Salir si no hay datos
+            return;
         }
 
         const imageResponse = await fetch(`http://172.16.10.31/api/Image/${data.productPrintCard}`);
-        const imageData = await imageResponse.json(); // Obtener el JSON completo
-        const imageBase64 = imageData.imageBase64 || 'https://www.jnfac.or.kr/img/noimage.jpg'; // Extraer el string Base64 o URL por defecto
-
-        console.log(imageBase64);
+        const imageData = await imageResponse.json();
+        const imageBase64 = imageData.imageBase64 || 'https://www.jnfac.or.kr/img/noimage.jpg';
 
         setProductos((prev) => [
             {
@@ -78,96 +75,8 @@ const loadData = async (epc: string, setProductos: React.Dispatch<React.SetState
     }
 };
 
-
-// Función para cambiar el estado
-const updateStatus = async (epc: string, newStatus: number) => {
-    try {
-        const statusResponse = await fetch(`http://172.16.10.31/api/RfidLabel/GetStatusByRFID/${epc}`);
-        
-        if (!statusResponse.ok) {
-            console.error('Error en la respuesta del estado:', statusResponse.status);
-            return;
-        }
-        
-        const statusData = await statusResponse.json();
-        const currentStatus = statusData.myInteger; // Cambié el nombre de la variable para evitar confusión
-        console.log('Estatus de la etiqueta:', currentStatus);
-        
-        // Si el estado actual es mayor a 2, mostrar alerta y salir
-        if (currentStatus > 2) {
-            await Swal.fire('Tarima', 'Esta tarima ya se encuentra en almacen', 'info');
-            return null;
-        }
-
-        const response = await fetch(`http://172.16.10.31/api/RfidLabel/UpdateStatusByRFID/${epc}`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ status: newStatus }) // Usa el nuevo estado que pasaste como parámetro
-        });
-
-        if (response.ok) {
-            console.log("Estado actualizado correctamente");
-        } else {
-            const errorText = await response.text();
-            console.error("Error al actualizar el estado:", response.status, errorText);
-        }
-    } catch (error) {
-        console.error("Error al conectarse con el endpoint:", error);
-    }
-};
-
-
-// Función para hacer registro de entradas en ExtraInfo
-const extraInfo = async (epc: string, antena: string, fecha : string ) => {
-    try {
-
-        const epcData = await fetchData(epc);
-
-
-        // Comprobar si se obtuvo el ID del EPC
-        if (!epcData || !epcData.id) {
-            console.error("No se pudo obtener el ID del EPC");
-            return null;
-        }
-
-        const prodEtiquetaRFIDId = epcData.id;
-        console.log("ID del producto para EPC:", prodEtiquetaRFIDId);
-        
-        const response = await fetch('http://172.16.10.31/api/ProdExtraInfo/EntradaAlmacen', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                prodEtiquetaRFIDId: prodEtiquetaRFIDId,
-                fechaEntrada: new Date().toISOString(),
-                antena: 'EntradaPT'
-            })
-        });
-
-        if (!response.ok) {
-            console.error("Error al registrar la información. Estado:", response.status, response.statusText);
-            return null;
-        }
-
-        const result = await response.json();
-        console.log("Respuesta del servidor:", result);
-        return result;
-
-
-    } catch (error) {
-        console.error("Error al conectarse con el endpoint de registro:", error);
-        return null;
-    }
-};
-
-
-
-
 const ProductDetail: React.FC = () => {
-    const [productos, setProductos] = useState<Producto[]>([]); // Lista de productos
+    const [productos, setProductos] = useState<Producto[]>([]);
 
     useEffect(() => {
         const connection = new signalR.HubConnectionBuilder()
@@ -185,31 +94,17 @@ const ProductDetail: React.FC = () => {
             .catch((err) => console.error("Error de conexión:", err));
     
         connection.on("sendEpc", (message) => {
-            console.log("Mensaje recibido:", message);
-            subject.next(message);  // Asegúrate de que el formato de mensaje es correcto
+            subject.next(message);
         });
     
         const processMessage = (message: any) => {
-            if (message && message.epc) {  // Asegúrate de que coincida con las propiedades en minúsculas
-                const { antennaPort, epc, rssi, firstSeenTime, lastSeenTime, readerIP } = message;
-                const epcSinEspacios = epc.replace(/\s+/g, '');
-        
-                console.log("Antena:", antennaPort);
-                console.log("EPC:", epcSinEspacios);
-                console.log("RSSI:", rssi);
-                console.log("First Seen:", firstSeenTime);
-                console.log("Last Seen:", lastSeenTime);
-                console.log("Reader IP:", readerIP);
-        
-                // Procesar los datos según lo necesites
+            if (message && message.epc) {
+                const epcSinEspacios = message.epc.replace(/\s+/g, '');
                 loadData(epcSinEspacios, setProductos);
-                updateStatus(epcSinEspacios, 2); // Cambia el estado de EPC
-                extraInfo(epcSinEspacios, antennaPort,lastSeenTime); // Registra la información adicional
             } else {
                 console.warn("Formato de mensaje incorrecto o faltan datos:", message);
             }
         };
-        
     
         const subscription = subject.subscribe(processMessage);
     
@@ -227,63 +122,56 @@ const ProductDetail: React.FC = () => {
     
             subscription.unsubscribe();
         };
-    }, [setProductos]);
-    
-    
+    }, []);
 
     return (
-        <div className="outer-container">
-            <div className="product-list-container">
-                <div className="entry-title">
-                    <h2>Entradas</h2>
-                </div>
+        <Container maxWidth="lg">
+            <Typography variant="h4" align="center" gutterBottom>
+                Entradas de Almacén
+            </Typography>
+            <Grid container spacing={3}>
                 {productos.map((producto, index) => (
-                    <div className="entry-product" key={index}>
-                        <p><strong>Área:</strong> <span>{producto.area}</span></p>
-                        <p><strong>Clave de Producto:</strong> <span>{producto.claveProducto}</span></p>
-                        <p><strong>Producto:</strong> <span>{producto.nombreProducto}</span></p>
-                        <p><strong>Peso Neto:</strong> <span>{producto.pesoNeto}</span></p>
-                        <p><strong>Piezas:</strong> <span>{producto.piezas}</span></p>
-                        <p><strong>Unidad de Medida:</strong> <span>{producto.uom}</span></p>
-                    </div>
+                    <Grid item xs={12} md={6} lg={4} key={index}>
+                        <Card>
+                            <CardContent>
+                                <Typography variant="h6">
+                                    Producto: {producto.nombreProducto}
+                                </Typography>
+                                <Typography variant="body2">
+                                    Área: {producto.area}
+                                </Typography>
+                                <Typography variant="body2">
+                                    Clave Producto: {producto.claveProducto}
+                                </Typography>
+                                <Typography variant="body2">
+                                    Peso Neto: {producto.pesoNeto}
+                                </Typography>
+                                <Typography variant="body2">
+                                    Piezas: {producto.piezas}
+                                </Typography>
+                                <Typography variant="body2">
+                                    Unidad de Medida: {producto.uom}
+                                </Typography>
+                                <Typography variant="body2">
+                                    Fecha de Entrada: {producto.fechaEntrada}
+                                </Typography>
+                            </CardContent>
+                        </Card>
+                    </Grid>
                 ))}
-            </div>
-            <div className="container">
-                {productos.length > 0 && (
-                    <div className="product-image">
-                        <img src={productos[0].Imagen} alt="Imagen del Producto" />
-                    </div>
-                )}
-                <div className="product-details">
-                    <h1>Detalles del Producto</h1>
-                    {productos.length > 0 && (
-                        <>
-                            <div className="detail-row">
-                                <p><strong>Área:</strong> <span>{productos[0].area}</span></p>
-                                <p><strong>Fecha:</strong> <span>{productos[0].fecha}</span></p>
-                            </div>
-                            <div className="">
-                                <p><strong>Clave de Producto:</strong> <span>{productos[0].claveProducto}</span></p>
-                                <p><strong>Producto:</strong> <span>{productos[0].nombreProducto}</span></p>
-                            </div>
-                            <div className="detail-row">
-                                <p><strong>Peso Bruto:</strong> <span>{productos[0].pesoBruto}</span></p>
-                                <p><strong>Peso Neto:</strong> <span>{productos[0].pesoNeto}</span></p>
-                            </div>
-                            <div className="detail-row">
-                                <p><strong>Piezas:</strong> <span>{productos[0].piezas}</span></p>
-                                <p><strong>Peso Tarima:</strong> <span>{productos[0].pesoTarima}</span></p>
-                            </div>
-                            <div className="">
-                                <p><strong>Fecha de Entrada:</strong> <span>{productos[0].fechaEntrada}</span></p>
-                                <p><strong>Unidad de Medida:</strong> <span>{productos[0].uom}</span></p>
-                            </div>
-                            <p><strong>PrintCard:</strong> <span>{productos[0].productPrintCard}</span></p>
-                        </>
-                    )}
-                </div>
-            </div>
-        </div>
+            </Grid>
+            {productos.length > 0 && (
+                <Box sx={{ textAlign: 'center', marginTop: 3 }}>
+                    <Paper elevation={3}>
+                        <img 
+                            src={productos[0].Imagen} 
+                            alt="Imagen del Producto" 
+                            style={{ maxWidth: '100%', height: 'auto', borderRadius: '8px' }} 
+                        />
+                    </Paper>
+                </Box>
+            )}
+        </Container>
     );
 };
 
